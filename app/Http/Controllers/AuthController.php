@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cookie;
 use App\Models\User;
 
 class AuthController extends Controller
@@ -34,21 +35,34 @@ class AuthController extends Controller
 
     public function login(Request $request)
     {
-        if (!Auth::attempt($request->only('email', 'password'))) {
+        $credentials = $request->validate([
+            'email' => ['required', 'email'],
+            'password' => ['required'],
+        ]);
+
+        if (Auth::attempt($credentials)) {
+            $request->session()->regenerate();
+            $user = User::where('email', $request['email'])->firstOrFail();
+            $token = $user->createToken('auth_token')->plainTextToken;
+
             return response()->json([
-                'message' => 'Invalid login details'
-            ], 401);
+                'name' => $user->name,
+                'email' => $user->email,
+                'created_at' => $user->created_at,
+                'updated_at' => $user->updated_at,
+                'access_token' => $token,
+            ]);
         }
 
-        $user = User::where('email', $request['email'])->firstOrFail();
-        // dd($user);
+        return response()->json([], 401);
+    }
 
-        $token = $user->createToken('auth_token')->plainTextToken;
-
-        return response()->json([
-            'access_token' => $token,
-            'token_type' => 'Bearer',
-        ]);
+    public function logout(Request $request)
+    {
+        Auth::logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+        return response()->json(true);
     }
 
     public function me(Request $request)
